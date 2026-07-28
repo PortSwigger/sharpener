@@ -1,15 +1,16 @@
 // Burp Suite Extension Name: Sharpener
-// Released under AGPL see LICENSE for more information
+// Copyright (C) 2021-2026 Soroush Dalili (@irsdl)
+// Released under AGPL v3.0 with additional terms, see the LICENSE and NOTICE files
 // Developed by Soroush Dalili (@irsdl)
-// Released initially as open source by MDSec - https://www.mdsec.co.uk
-// Project link: https://github.com/mdsecresearch/BurpSuiteSharpener
+// Project link: https://github.com/irsdl/BurpSuiteSharpenerEx
 
 package ninja.burpsuite.extension.sharpener.objects;
 
 import java.awt.*;
 import java.util.Arrays;
 
-public class TabFeaturesObject extends TabFeaturesObjectStyle {
+public final class TabFeaturesObject extends TabFeaturesObjectStyle {
+    private static final long serialVersionUID = 1L;
     public int index = -1;
     private String title = ""; // we are trimming the titles since Sharpener 3.2
     private String tfoTitle = ""; // we use this for comparison as it contains trimmed and lowercase values
@@ -39,6 +40,12 @@ public class TabFeaturesObject extends TabFeaturesObjectStyle {
         return result;
     }
 
+    @Override
+    public int hashCode() {
+        // uses the same values as equals
+        return java.util.Objects.hash(getTfoTitle(), getStyle());
+    }
+
     public TabFeaturesObjectStyle getStyle() {
         return new TabFeaturesObjectStyle("", fontName, fontSize, isBold, isItalic, isCloseButtonVisible, getColor(), get_IconResourceString(), iconSize);
     }
@@ -54,13 +61,13 @@ public class TabFeaturesObject extends TabFeaturesObjectStyle {
 
     public String[] getTitleHistory() {
         return Arrays.stream(titleHistory).filter(s -> (s != null && !s.isBlank()))
-                .map(String::trim)
+                .map(s -> s.trim())
                 .toArray(String[]::new);
     }
 
     public void setTitleHistory(String[] titleHistory) {
         this.titleHistory = Arrays.stream(titleHistory).filter(s -> (s != null && !s.isBlank()))
-                .map(String::trim)
+                .map(s -> s.trim())
                 .toArray(String[]::new);
     }
 

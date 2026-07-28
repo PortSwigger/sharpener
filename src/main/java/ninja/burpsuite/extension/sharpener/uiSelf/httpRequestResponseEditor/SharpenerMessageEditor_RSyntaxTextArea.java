@@ -1,3 +1,9 @@
+// Burp Suite Extension Name: Sharpener
+// Copyright (C) 2021-2026 Soroush Dalili (@irsdl)
+// Released under AGPL v3.0 with additional terms, see the LICENSE and NOTICE files
+// Developed by Soroush Dalili (@irsdl)
+// Project link: https://github.com/irsdl/BurpSuiteSharpenerEx
+
 // initial code from https://github.com/hackvertor/hackvertor/blob/master/src/main/java/burp/ui/HackvertorInput.java
 package ninja.burpsuite.extension.sharpener.uiSelf.httpRequestResponseEditor;
 
@@ -9,9 +15,10 @@ import java.awt.*;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 
-public class SharpenerMessageEditor_RSyntaxTextArea extends RSyntaxTextArea {
+public final class SharpenerMessageEditor_RSyntaxTextArea extends RSyntaxTextArea {
+    private static final long serialVersionUID = 1L;
 
-    ExtensionSharedParameters sharedParameters;
+    transient ExtensionSharedParameters sharedParameters;
 
     public SharpenerMessageEditor_RSyntaxTextArea(ExtensionSharedParameters sharedParameters) {
         super();
@@ -49,6 +56,10 @@ public class SharpenerMessageEditor_RSyntaxTextArea extends RSyntaxTextArea {
         super.updateUI();
 
         SwingUtilities.invokeLater(() -> {
+            // updateUI also runs during construction, before sharedParameters is set
+            if (sharedParameters == null || sharedParameters.montoyaApi == null) {
+                return;
+            }
             if (sharedParameters.montoyaApi.userInterface().currentTheme().name().equalsIgnoreCase("dark")) {
                 RSyntaxUtils.applyThemeToRSyntaxTextArea(this, "dark", sharedParameters);
             } else {

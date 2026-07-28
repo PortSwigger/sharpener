@@ -1,8 +1,8 @@
 // Burp Suite Extension Name: Sharpener
-// Released under AGPL see LICENSE for more information
+// Copyright (C) 2021-2026 Soroush Dalili (@irsdl)
+// Released under AGPL v3.0 with additional terms, see the LICENSE and NOTICE files
 // Developed by Soroush Dalili (@irsdl)
-// Released initially as open source by MDSec - https://www.mdsec.co.uk
-// Project link: https://github.com/mdsecresearch/BurpSuiteSharpener
+// Project link: https://github.com/irsdl/BurpSuiteSharpenerEx
 
 package ninja.burpsuite.extension.sharpener.uiSelf.suiteTab;
 
@@ -11,7 +11,8 @@ import ninja.burpsuite.extension.sharpener.ExtensionSharedParameters;
 import javax.swing.*;
 
 public class SuiteTab extends JComponent {
-    ExtensionSharedParameters sharedParameters;
+    private static final long serialVersionUID = 1L;
+    transient ExtensionSharedParameters sharedParameters;
 
     public SuiteTab(ExtensionSharedParameters sharedParameters) {
         this.sharedParameters = sharedParameters;

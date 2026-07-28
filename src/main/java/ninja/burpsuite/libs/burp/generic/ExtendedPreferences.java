@@ -1,11 +1,12 @@
-// Released under AGPL see LICENSE for more information
+// Copyright (C) 2021-2026 Soroush Dalili (@irsdl)
+// Released under AGPL v3.0 with additional terms, see the LICENSE and NOTICE files
 // Developed by Soroush Dalili (@irsdl)
 
 package ninja.burpsuite.libs.burp.generic;
 
 import burp.api.montoya.MontoyaApi;
-import com.coreyd97.BurpExtenderUtilities.IGsonProvider;
-import com.coreyd97.BurpExtenderUtilities.Preferences;
+import ninja.burpsuite.libs.thirdparty.burpextenderutilities.IGsonProvider;
+import ninja.burpsuite.libs.thirdparty.burpextenderutilities.Preferences;
 
 public class ExtendedPreferences extends Preferences {
     BurpExtensionSharedParameters sharedParameters;
@@ -26,9 +27,9 @@ public class ExtendedPreferences extends Preferences {
             }
 
             try {
-                setSetting(settingName, value);
+                set(settingName, value);
 
-                if (getSetting(settingName).equals(value)) {
+                if (get(settingName).equals(value)) {
                     isSaved = true;
                     if (sharedParameters != null) {
                         sharedParameters.printDebugMessage("This was saved successfully: " + settingName, BurpExtensionSharedParameters.DebugLevels.VerboseAndPrefsRW.getValue());
@@ -39,7 +40,7 @@ public class ExtendedPreferences extends Preferences {
                     sharedParameters.printDebugMessage("Save error: " + e.getMessage(), BurpExtensionSharedParameters.DebugLevels.VerboseAndPrefsRW.getValue());
                     if (e.getMessage().contains("has not been registered")) {
                         sharedParameters.printDebugMessage("Registering: " + settingName, BurpExtensionSharedParameters.DebugLevels.VerboseAndPrefsRW.getValue());
-                        registerSetting(settingName, value.getClass(), visibility);
+                        register(settingName, value.getClass(), visibility);
                     }
                     sharedParameters.printDebugMessage("Save error: " + e.getMessage(), BurpExtensionSharedParameters.DebugLevels.VerboseAndPrefsRW.getValue());
                     if (sharedParameters.debugLevel == BurpExtensionSharedParameters.DebugLevels.VeryVerbose.getValue())
@@ -58,7 +59,7 @@ public class ExtendedPreferences extends Preferences {
                 sharedParameters.printDebugMessage("Trying to get value of " + settingName + " from settings", BurpExtensionSharedParameters.DebugLevels.VerboseAndPrefsRW.getValue());
             }
 
-            result = getSetting(settingName);
+            result = get(settingName);
         } catch (Exception e) {
             if (sharedParameters != null) {
                 if (e.getMessage().contains("has not been registered")) {

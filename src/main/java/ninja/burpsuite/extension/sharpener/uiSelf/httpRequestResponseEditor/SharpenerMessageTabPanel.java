@@ -1,3 +1,9 @@
+// Burp Suite Extension Name: Sharpener
+// Copyright (C) 2021-2026 Soroush Dalili (@irsdl)
+// Released under AGPL v3.0 with additional terms, see the LICENSE and NOTICE files
+// Developed by Soroush Dalili (@irsdl)
+// Project link: https://github.com/irsdl/BurpSuiteSharpenerEx
+
 package ninja.burpsuite.extension.sharpener.uiSelf.httpRequestResponseEditor;
 
 import ninja.burpsuite.extension.sharpener.ExtensionSharedParameters;
@@ -7,8 +13,9 @@ import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import javax.swing.*;
 import java.awt.*;
 
-public class SharpenerMessageTabPanel extends JPanel {
-    ExtensionSharedParameters sharedParameters;
+public final class SharpenerMessageTabPanel extends JPanel {
+    private static final long serialVersionUID = 1L;
+    transient ExtensionSharedParameters sharedParameters;
 
     public SharpenerMessageTabPanel(ExtensionSharedParameters sharedParameters, boolean readOnly) {
         super(new GridBagLayout());

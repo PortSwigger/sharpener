@@ -1,3 +1,9 @@
+// Burp Suite Extension Name: Sharpener
+// Copyright (C) 2021-2026 Soroush Dalili (@irsdl)
+// Released under AGPL v3.0 with additional terms, see the LICENSE and NOTICE files
+// Developed by Soroush Dalili (@irsdl)
+// Project link: https://github.com/irsdl/BurpSuiteSharpenerEx
+
 package ninja.burpsuite.extension.sharpener.uiSelf.httpRequestResponseEditor;
 
 import ninja.burpsuite.extension.sharpener.ExtensionSharedParameters;
@@ -55,8 +61,8 @@ public class SharpenerMessageTabPanelGUI {
         topPanel.setMinimumSize(new Dimension(84, 30));
         topPanel.setPreferredSize(new Dimension(78, 30));
         sharpenerMessageMainJPanel.add(topPanel, BorderLayout.NORTH);
-        comboBoxActions = new JComboBox();
-        final DefaultComboBoxModel defaultComboBoxModel1 = new DefaultComboBoxModel();
+        comboBoxActions = new JComboBox<>();
+        final DefaultComboBoxModel<String> defaultComboBoxModel1 = new DefaultComboBoxModel<>();
         defaultComboBoxModel1.addElement("test1");
         defaultComboBoxModel1.addElement("test2");
         comboBoxActions.setModel(defaultComboBoxModel1);

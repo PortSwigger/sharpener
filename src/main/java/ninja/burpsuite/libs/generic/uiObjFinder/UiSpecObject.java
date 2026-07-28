@@ -1,4 +1,5 @@
-// Released under AGPL see LICENSE for more information
+// Copyright (C) 2021-2026 Soroush Dalili (@irsdl)
+// Released under AGPL v3.0 with additional terms, see the LICENSE and NOTICE files
 // Developed by Soroush Dalili (@irsdl)
 
 package ninja.burpsuite.libs.generic.uiObjFinder;
@@ -7,7 +8,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.lang.reflect.Type;
 
-public class UiSpecObject {
+public final class UiSpecObject {
     private boolean _isJComponent = false;
     private Type _objectType = null;
     private Type _parentObjectType = null;
@@ -30,7 +31,7 @@ public class UiSpecObject {
     public UiSpecObject() {
     }
 
-    public UiSpecObject(Class type) {
+    public UiSpecObject(Class<?> type) {
         set_objectType(type);
     }
 
@@ -39,25 +40,27 @@ public class UiSpecObject {
             return false;
         }
 
-        if (get_minJComponentCount() != null || get_maxJComponentCount() != null) {
-            set_isJComponent(true);
+        // these checks only make sense on a JComponent, so they imply the JComponent requirement
+        boolean requiresJComponent = get_isJComponent()
+                || get_minJComponentCount() != null || get_maxJComponentCount() != null
+                || get_hasToolTipText() != null || get_toolTipText() != null;
+
+        if (requiresJComponent && !(component instanceof JComponent)) {
+            return false;
         }
 
-        if (get_isJComponent() && !(component instanceof JComponent)) {
-            return false;
-        }
-
-        if (get_frameTitle() != null && !(component instanceof JFrame)) {
-            return false;
-        } else if (get_frameTitle() != null && component instanceof JFrame && !((JFrame) component).getTitle().equals(get_frameTitle())) {
-            return false;
+        if (get_frameTitle() != null) {
+            if (!(component instanceof JFrame) || !get_frameTitle().equals(((JFrame) component).getTitle())) {
+                return false;
+            }
         }
 
         if (get_objectType() != null && !((Class<?>) get_objectType()).isAssignableFrom(component.getClass())) {
             return false;
         }
 
-        if (get_parentObjectType() != null && !((Class<?>) get_parentObjectType()).isAssignableFrom(component.getParent().getClass())) {
+        if (get_parentObjectType() != null && (component.getParent() == null
+                || !((Class<?>) get_parentObjectType()).isAssignableFrom(component.getParent().getClass()))) {
             return false;
         }
 
@@ -71,16 +74,18 @@ public class UiSpecObject {
             if (componentName == null)
                 return false;
 
+            String expectedName = get_name();
             if (!get_isCaseSensitiveName()) {
                 componentName = componentName.toLowerCase();
+                expectedName = expectedName.toLowerCase();
             }
 
             if (!get_isPartialName()) {
-                if (!componentName.equals(get_name())) {
+                if (!componentName.equals(expectedName)) {
                     return false;
                 }
             } else {
-                if (!componentName.contains(get_name())) {
+                if (!componentName.contains(expectedName)) {
                     return false;
                 }
             }
@@ -102,7 +107,8 @@ public class UiSpecObject {
             return false;
         }
 
-        if (get_backgroundColor() != null && !component.getBackground().equals(get_backgroundColor())) {
+        // getBackground() can be null when no background is set, so equals is called on the expected color
+        if (get_backgroundColor() != null && !get_backgroundColor().equals(component.getBackground())) {
             return false;
         }
 
@@ -110,7 +116,11 @@ public class UiSpecObject {
             return false;
         }
 
-        if (get_hasMouseListener() != null && get_hasMouseListener() != (((JComponent) component).getMouseListeners().length > 0)) {
+        if (get_maxJComponentCount() != null && ((JComponent) component).getComponentCount() > get_maxJComponentCount()) {
+            return false;
+        }
+
+        if (get_hasMouseListener() != null && get_hasMouseListener() != (component.getMouseListeners().length > 0)) {
             return false;
         }
 
@@ -118,11 +128,7 @@ public class UiSpecObject {
             return false;
         }
 
-        if (get_toolTipText() != null && !get_toolTipText().equals(((JComponent) component).getToolTipText())) {
-            return false;
-        }
-
-        return get_maxJComponentCount() == null || ((JComponent) component).getComponentCount() <= get_maxJComponentCount();
+        return get_toolTipText() == null || get_toolTipText().equals(((JComponent) component).getToolTipText());
     }
 
     public boolean get_isJComponent() {
@@ -254,9 +260,6 @@ public class UiSpecObject {
     }
 
     public Boolean get_hasToolTipText() {
-        if (_toolTipText != null) {
-            this._hasToolTipText = true;
-        }
         return _hasToolTipText;
     }
 
