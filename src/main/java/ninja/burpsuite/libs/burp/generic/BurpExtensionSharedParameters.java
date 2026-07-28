@@ -1,4 +1,5 @@
-// Released under AGPL see LICENSE for more information
+// Copyright (C) 2021-2026 Soroush Dalili (@irsdl)
+// Released under AGPL v3.0 with additional terms, see the LICENSE and NOTICE files
 // Developed by Soroush Dalili (@irsdl)
 
 package ninja.burpsuite.libs.burp.generic;
@@ -7,10 +8,11 @@ import burp.api.montoya.BurpExtension;
 import burp.api.montoya.MontoyaApi;
 import burp.api.montoya.core.Registration;
 import burp.api.montoya.ui.contextmenu.ContextMenuItemsProvider;
-import com.coreyd97.BurpExtenderUtilities.DefaultGsonProvider;
-import com.coreyd97.BurpExtenderUtilities.Preferences;
+import ninja.burpsuite.libs.thirdparty.burpextenderutilities.DefaultGsonProvider;
+import ninja.burpsuite.libs.thirdparty.burpextenderutilities.Preferences;
 import ninja.burpsuite.extension.sharpener.ExtensionMainClass;
 import ninja.burpsuite.extension.sharpener.uiSelf.topMenu.TopMenu;
+import ninja.burpsuite.libs.generic.DelayedTaskRunner;
 import ninja.burpsuite.libs.generic.PropertiesHelper;
 import ninja.burpsuite.libs.generic.uiObjFinder.UIWalker;
 import ninja.burpsuite.libs.generic.uiObjFinder.UiSpecObject;
@@ -21,8 +23,6 @@ import java.awt.*;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class BurpExtensionSharedParameters {
 
@@ -34,17 +34,22 @@ public class BurpExtensionSharedParameters {
     public String extensionPropertiesUrl = "https://raw.githubusercontent.com/user/proj/main/src/main/resources/extension.properties"; // can be used in check for update!
     public Integer debugLevel = null;
     public BurpExtension burpExtender;
-    public Class extensionClass = null; // this is useful when trying to load a resource such as an image
+    public Class<?> extensionClass = null; // this is useful when trying to load a resource such as an image
     public MontoyaApi montoyaApi = null;
     public BurpExtensionFeatures features = new BurpExtensionFeatures();
     public ExtendedPreferences preferences; // to use the ability of this project: https://github.com/CoreyD97/BurpExtenderUtilities
     public boolean unloadWithoutSave = false; // this is useful if we need to exit without save in some situation
+    // one shared daemon timer for all delayed tasks; it is stopped once during unload
+    public final DelayedTaskRunner delayedTasks = new DelayedTaskRunner();
     public boolean isBurpPro = false;
-    public double burpMajorVersion = 0.0;
-    public double burpMinorVersion = 0.0;
+    public long burpBuildNumber = 0; // Montoya buildNumber(), 0 when unknown
+    public double burpMajorVersion = 0.0; // Burp year, for example 2026, derived from burpBuildNumber
+    public double burpMinorVersion = 0.0; // Burp release.patch, for example 4.3, derived from burpBuildNumber
     public boolean isCompatibleWithCurrentBurpVersion = true;
     // these are the parameters which are used per extension but needs to be shared - like registers
-    public boolean addedIconListener = false;
+    // the focus listener that reapplies the custom icon; kept so unload can remove exactly
+    // this listener instead of guessing which listener on the main frame is ours
+    public java.awt.event.WindowFocusListener iconRefreshWindowFocusListener = null;
     public boolean isDarkMode = false; // Sometimes extensions need to see whether Burp uses dark or light mode
     public JComponent extensionSuiteTab = null; // panel that extension adds to burp
     public TopMenu topMenuBar;
@@ -90,8 +95,16 @@ public class BurpExtensionSharedParameters {
     private JMenuBar _mainMenuBar = null; // This is Burp Suite's main menu bar
     private JTabbedPane _rootTabbedPane = null; // this is where Burp Suite main tools' tabs are
     private String _originalBurpTitle = ""; // Burp Suite's original frame title
-    private Image _originalBurpIcon = null; // Burp Suite's original frame icon
+    private java.util.List<Image> _originalBurpIcons = null; // Burp Suite's original frame icons
     private boolean _isUILoaded = false; // Burp Suite's original frame icon
+
+    // Original state of OS level taskbar icons, used to restore them on unload.
+    // originalWindowAppIds keeps the Windows AppUserModelID of each changed window ("" means it had none).
+    public final java.util.Map<Window, String> originalWindowAppIds = java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+    public Image originalTaskbarIconImage = null; // original java.awt.Taskbar icon (macOS Dock)
+    public boolean originalTaskbarIconSaved = false;
+    // last icon applied to the OS taskbar/dock; the focus refresh skips the native call when it is unchanged
+    public Image appliedOsTaskbarIconImage = null;
 
     public enum DebugLevels {
         None("Disabled", 0),
@@ -130,10 +143,16 @@ public class BurpExtensionSharedParameters {
 
     }
 
+    // initParameters only uses methods and fields of this base class, so the early use of "this" is safe
+    // "all" is included because the Eclipse compiler does not know the javac "this-escape" token
+    @SuppressWarnings({"all", "this-escape"})
     public BurpExtensionSharedParameters(String extensionName, String version, String extensionURL, String extensionIssueTracker, String extensionCopyrightMessage, String extensionPropertiesUrl, BurpExtension burpExtenderObj, MontoyaApi montoyaApi, BurpExtensionFeatures burpExtensionFeatures) {
         initParameters(extensionName, version, extensionURL, extensionIssueTracker, extensionCopyrightMessage, extensionPropertiesUrl, burpExtenderObj, montoyaApi, burpExtensionFeatures);
     }
 
+    // initParameters only uses methods and fields of this base class, so the early use of "this" is safe
+    // "all" is included because the Eclipse compiler does not know the javac "this-escape" token
+    @SuppressWarnings({"all", "this-escape"})
     public BurpExtensionSharedParameters(ExtensionMainClass extensionMainClass, MontoyaApi montoyaApi, String propertiesFilePath) {
         var properties = PropertiesHelper.readProperties(extensionMainClass.getClass(), "/extension.properties");
 
@@ -171,30 +190,10 @@ public class BurpExtensionSharedParameters {
             if (montoyaApi.burpSuite().version().edition().name().toLowerCase().contains("professional"))
                 this.isBurpPro = true;
 
-            try{
-                //TODO: replace this and minor version with the new method in MontoyaApi (buildNumber() --> its format is like YYYY_MM_RR_PPP_BBBBBB (Year, month, release, patch, build number)
-                this.burpMajorVersion = Double.parseDouble(montoyaApi.burpSuite().version().major());
-            }catch(Exception e){
-                // this means the major version now cannot be converted to numbers!
-                // a regular expression to match the numbers with an optional decimal pointer following by two digits
-                String regex = "\\b(\\d+\\.\\d{1,2}|\\d+)\\b";
-                Matcher m = Pattern.compile(regex).matcher(montoyaApi.burpSuite().version().major());
-                if (m.find()) {
-                    this.burpMajorVersion = Double.parseDouble(m.group(1));
-                }
-            }
-
-            try{
-                this.burpMinorVersion = Double.parseDouble(montoyaApi.burpSuite().version().minor());
-            }catch(Exception e){
-                // this means the major version now cannot be converted to numbers!
-                // a regular expression to match the numbers with an optional decimal pointer following by two digits
-                String regex = "\\b(\\d+\\.\\d{1,2}|\\d+)\\b";
-                Matcher m = Pattern.compile(regex).matcher(montoyaApi.burpSuite().version().minor());
-                if (m.find()) {
-                    this.burpMinorVersion = Double.parseDouble(m.group(1));
-                }
-            }
+            // major() and minor() are deprecated for removal, buildNumber() is the replacement
+            this.burpBuildNumber = montoyaApi.burpSuite().version().buildNumber();
+            this.burpMajorVersion = BurpVersionNumber.majorFromBuildNumber(burpBuildNumber);
+            this.burpMinorVersion = BurpVersionNumber.minorFromBuildNumber(burpBuildNumber);
 
         } catch (Exception e) {
             printlnError(e.getMessage());
@@ -205,12 +204,12 @@ public class BurpExtensionSharedParameters {
         this.preferences.sharedParameters = this;
         // registering and getting the isDebug setting
         try {
-            preferences.registerSetting("debugLevel", Integer.TYPE, 0, Preferences.Visibility.GLOBAL);
+            preferences.register("debugLevel", Integer.TYPE, 0, Preferences.Visibility.GLOBAL);
         } catch (Exception e) {
             // already registered!
             printlnError(e.getMessage());
         }
-        debugLevel = preferences.getSetting("debugLevel");
+        debugLevel = preferences.get("debugLevel");
 
         // print the copyright message
         this.printlnOutput(extensionCopyrightMessage);
@@ -218,7 +217,7 @@ public class BurpExtensionSharedParameters {
         isCompatibleWithCurrentBurpVersion = isBurpVersionCompatible();
         if (!isCompatibleWithCurrentBurpVersion) {
             printlnError("This extension IS NOT COMPATIBLE with the currently used version or edition of Burp Suite.");
-            printlnError("Current Burp Suite Version: Major: " + this.burpMajorVersion + " - Minor: " + this.burpMinorVersion);
+            printlnError("Current Burp Suite Version: " + montoyaApi.burpSuite().version() + " (build number: " + this.burpBuildNumber + ")");
             printlnError("Current Burp Suite Edition: " + montoyaApi.burpSuite().version().edition().name());
         } else {
             printDebugMessage("This extension is compatible with the currently used version and edition of Burp Suite.");
@@ -273,6 +272,10 @@ public class BurpExtensionSharedParameters {
         return isCompatible;
     }
 
+    // delay between two attempts to find the Burp UI; keep this short so a missing UI
+    // can never block extension loading for long (worst case is attempts * delay)
+    public static final long UI_LOAD_RETRY_DELAY_MS = 500;
+
     public void setUIParametersUsingMontoya(int maxLoadAttempts) {
         boolean foundUI = false;
         int attemptsRemaining = maxLoadAttempts;
@@ -290,8 +293,10 @@ public class BurpExtensionSharedParameters {
 
             } catch (Exception e) {
                 attemptsRemaining--;
+                // a fixed short delay; the old growing delay could add up to 45 seconds
+                // and made Burp look frozen while the extension was loading
                 try {
-                    Thread.sleep(1000L * (maxLoadAttempts - attemptsRemaining)); // 100 * `waitSeconds` * 10 = `waitSeconds` seconds
+                    Thread.sleep(UI_LOAD_RETRY_DELAY_MS);
                 } catch (InterruptedException ignored) {
                 }
             }
@@ -302,7 +307,7 @@ public class BurpExtensionSharedParameters {
             printDebugMessage("Perhaps unload the extension at this point");
         } else {
             _originalBurpTitle = get_mainFrameUsingMontoya().getTitle();
-            _originalBurpIcon = get_mainFrameUsingMontoya().getIconImage();
+            _originalBurpIcons = get_mainFrameUsingMontoya().getIconImages();
 
             printDebugMessage("Original title and icon has been set");
         }
@@ -403,10 +408,10 @@ public class BurpExtensionSharedParameters {
 
         HashMap<String, Preferences.Visibility> registeredSettings = preferences.getRegisteredSettings();
         for (String item : registeredSettings.keySet()) {
-            if (preferences.getSettingType(item) == String.class)
-                preferences.setSetting(item, "");
+            if (preferences.getType(item) == String.class)
+                preferences.set(item, "");
             else
-                preferences.setSetting(item, null);
+                preferences.set(item, null);
         }
 
     }
@@ -474,12 +479,18 @@ public class BurpExtensionSharedParameters {
         return _originalBurpTitle;
     }
 
-    public Image get_originalBurpIcon() {
-        return _originalBurpIcon;
+    public java.util.List<Image> get_originalBurpIcons() {
+        return _originalBurpIcons;
     }
 
     public boolean get_isUILoaded() {
         return _isUILoaded;
+    }
+
+    // True once unload has stopped the shared timer. Delayed tasks read this to
+    // avoid touching the Burp API after the extension has been unloaded.
+    public boolean isUnloaded() {
+        return delayedTasks.isStopped();
     }
 
     // These are the legacy code needed for previous version of Burp Suite - before 2023.1

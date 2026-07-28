@@ -1,8 +1,8 @@
 // Burp Suite Extension Name: Sharpener
-// Released under AGPL see LICENSE for more information
+// Copyright (C) 2021-2026 Soroush Dalili (@irsdl)
+// Released under AGPL v3.0 with additional terms, see the LICENSE and NOTICE files
 // Developed by Soroush Dalili (@irsdl)
-// Released initially as open source by MDSec - https://www.mdsec.co.uk
-// Project link: https://github.com/mdsecresearch/BurpSuiteSharpener
+// Project link: https://github.com/irsdl/BurpSuiteSharpenerEx
 
 package ninja.burpsuite.extension.sharpener.uiControllers.mainTabs;
 
@@ -12,7 +12,7 @@ import javax.swing.*;
 import java.awt.event.ContainerEvent;
 import java.awt.event.ContainerListener;
 
-public class MainTabsListeners implements ContainerListener {
+public final class MainTabsListeners implements ContainerListener {
     private final ExtensionSharedParameters sharedParameters;
     private boolean isResetInProgress = false;
 
@@ -35,11 +35,15 @@ public class MainTabsListeners implements ContainerListener {
     public void componentAdded(ContainerEvent e) {
         if (e.getSource() instanceof JTabbedPane && !isResetInProgress) {
             setResetInProgress(true);
-            new java.util.Timer().schedule(
+            sharedParameters.delayedTasks.schedule(
                     new java.util.TimerTask() {
                         @Override
                         public void run() {
+                            if (sharedParameters.isUnloaded())
+                                return;
                             SwingUtilities.invokeLater(() -> {
+                                if (sharedParameters.isUnloaded())
+                                    return;
                                 MainTabsStyleHandler.resetMainTabsStylesFromSettings_noUiLock(sharedParameters);
                                 setResetInProgress(false);
                             });

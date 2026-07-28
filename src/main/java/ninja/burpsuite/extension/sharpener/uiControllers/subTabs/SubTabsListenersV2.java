@@ -1,63 +1,83 @@
 // Burp Suite Extension Name: Sharpener
-// Released under AGPL see LICENSE for more information
+// Copyright (C) 2021-2026 Soroush Dalili (@irsdl)
+// Released under AGPL v3.0 with additional terms, see the LICENSE and NOTICE files
 // Developed by Soroush Dalili (@irsdl)
-// Released initially as open source by MDSec - https://www.mdsec.co.uk
-// Project link: https://github.com/mdsecresearch/BurpSuiteSharpener
+// Project link: https://github.com/irsdl/BurpSuiteSharpenerEx
 
 package ninja.burpsuite.extension.sharpener.uiControllers.subTabs;
 
 import ninja.burpsuite.extension.sharpener.ExtensionSharedParameters;
+import ninja.burpsuite.extension.sharpener.uiControllers.shortcuts.ShortcutMappings;
 import ninja.burpsuite.libs.burp.generic.BurpUITools;
 import ninja.burpsuite.libs.generic.MouseAdapterExtensionHandler;
 
 import javax.swing.*;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
 import java.awt.*;
 import java.awt.event.*;
 import java.beans.PropertyChangeListener;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Timer;
+import java.util.LinkedList;
 import java.util.TimerTask;
 import java.util.function.Consumer;
 
-public class SubTabsListenersV2 {
+public final class SubTabsListenersV2 {
     private final Consumer<MouseEvent> mouseEventConsumer;
     private final ExtensionSharedParameters sharedParameters;
     private boolean _isUpdateInProgress = false;
     private ArrayList<BurpUITools.MainTabs> accessibleTabs;
     private final boolean _isShortcutEnabled = true;
-    public HashMap<String, String> subTabsShortcutMappings = new HashMap<>() {{
-        put("control ENTER", "ShowMenu");
-        put("control shift ENTER", "ShowMenu");
-        put("DOWN", "ShowMenu");
-        put("control shift F", "FindTabs");
-        put("F3", "NextFind");
-        put("control F3", "NextFind");
-        put("shift F3", "PreviousFind");
-        put("control shift F3", "PreviousFind");
-        put("HOME", "FirstTab");
-        put("END", "LastTab");
-        put("control shift HOME", "FirstTab");
-        put("control shift END", "LastTab");
-        put("LEFT", "PreviousTab");
-        put("RIGHT", "NextTab");
-        put("control shift LEFT", "PreviousTab");
-        put("control shift RIGHT", "NextTab");
-        put("alt LEFT", "PreviouslySelectedTab");
-        put("alt RIGHT", "NextlySelectedTab");
-        put("control alt LEFT", "PreviouslySelectedTab");
-        put("control alt RIGHT", "NextlySelectedTab");
-        put("control C", "CopyTitle");
-        put("control shift C", "CopyTitle");
-        put("control V", "PasteTitle");
-        put("control shift V", "PasteTitle");
-        put("F2", "RenameTitle");
-        put("control F2", "RenameTitle");
-    }};
+
+    // Records every tab selection change in the navigation history, including
+    // selections made by Burp itself or by native keyboard navigation.
+    // Sharpener jumps are skipped because they update the history themselves.
+    private final class TabSelectionHistoryRecorder implements ChangeListener {
+        private final BurpUITools.MainTabs toolName;
+
+        private TabSelectionHistoryRecorder(BurpUITools.MainTabs toolName) {
+            this.toolName = toolName;
+        }
+
+        @Override
+        public void stateChanged(ChangeEvent e) {
+            if (SubTabsActions.isTabJumpInProgress())
+                return;
+
+            if (!(e.getSource() instanceof JTabbedPane tabbedPane))
+                return;
+
+            int selectedIndex = tabbedPane.getSelectedIndex();
+            if (selectedIndex < 0)
+                return;
+
+            LinkedList<Integer> previousHistory = sharedParameters.subTabPreviouslySelectedIndexHistory.get(toolName);
+            LinkedList<Integer> nextHistory = sharedParameters.subTabNextlySelectedIndexHistory.get(toolName);
+            if (previousHistory == null || nextHistory == null)
+                return;
+
+            boolean isLastTabIndex = selectedIndex == tabbedPane.getTabCount() - 1;
+            if (isLastTabIndex && !sharedParameters.isTabGroupSupportedByDefault)
+                return; // the "..." tab only creates a new tab, it is not a real selection
+
+            ShortcutMappings.recordSelectionHistory(previousHistory, selectedIndex,
+                    isLastTabIndex, sharedParameters.isTabGroupSupportedByDefault);
+            // a manual tab change invalidates the forward history
+            nextHistory.clear();
+        }
+    }
 
     public SubTabsListenersV2(ExtensionSharedParameters sharedParameters, Consumer<MouseEvent> mouseEventConsumer) {
         this.sharedParameters = sharedParameters;
         this.mouseEventConsumer = mouseEventConsumer;
+        refreshListeners();
+    }
+
+    // Removes and re-adds the tab listeners on the same object.
+    // This is reused on later loadSettings calls so a new listener object is not
+    // created every time, which used to leave stale component listeners behind.
+    public void refreshListeners() {
         removeTabListener();
         addTabListener();
     }
@@ -108,11 +128,15 @@ public class SubTabsListenersV2 {
                     delay = 10000;
                 }
 
-                new Timer().schedule(
+                sharedParameters.delayedTasks.schedule(
                         new TimerTask() {
                             @Override
                             public void run() {
+                                if (sharedParameters.isUnloaded())
+                                    return;
                                 SwingUtilities.invokeLater(() -> {
+                                    if (sharedParameters.isUnloaded())
+                                        return;
                                     set_isUpdateInProgress(true);
                                     sharedParameters.allSettings.subTabsSettings.loadSettings(toolName);
                                     sharedParameters.allSettings.subTabsSettings.saveSettings(toolName);
@@ -146,16 +170,21 @@ public class SubTabsListenersV2 {
 
             @Override
             public void componentHidden(ComponentEvent e) {
-                new Timer().schedule(
+                sharedParameters.delayedTasks.schedule(
                         new TimerTask() {
                             @Override
                             public void run() {
+                                if (sharedParameters.isUnloaded())
+                                    return;
                                 SwingUtilities.invokeLater(() -> {
+                                    if (sharedParameters.isUnloaded())
+                                        return;
                                     // This will be triggered when Burp creates items in Repeater or Intruder
                                     BurpUITools.MainTabs currentToolName = BurpUITools.getMainTabsObjFromString(sharedParameters.get_rootTabbedPaneUsingMontoya().getTitleAt(sharedParameters.get_rootTabbedPaneUsingMontoya().indexOfComponent(((Component) e.getSource()).getParent())));
                                     var currentToolTabbedPane = sharedParameters.get_toolTabbedPane(currentToolName);
                                     if (currentToolTabbedPane != null) {
-                                        if (currentToolTabbedPane.getPropertyChangeListeners("tabPropertyChangeListener").length == 0)
+                                        // the listener is registered under the "indexForTabComponent" property, so the guard must query the same name
+                                        if (currentToolTabbedPane.getPropertyChangeListeners("indexForTabComponent").length == 0)
                                             currentToolTabbedPane.addPropertyChangeListener("indexForTabComponent", tabPropertyChangeListener);
 
                                         addSubTabsListener(currentToolName);
@@ -195,105 +224,32 @@ public class SubTabsListenersV2 {
                 subTabsContainerHandlers.add(subTabsContainerHandler);
             }
 
-            // this for dotdotdot tab!
-            if (sharedParameters.burpMajorVersion < 2022
-                    || (sharedParameters.burpMajorVersion == 2022 && sharedParameters.burpMinorVersion < 6)) { // before version 2022.6
-                SubTabsContainerHandler tempDotDotDotSubTabsContainerHandler = new SubTabsContainerHandler(sharedParameters, toolTabbedPane, toolTabbedPane.getTabCount() - 1, true);
-                if (!subTabsContainerHandlers.contains(tempDotDotDotSubTabsContainerHandler)) {
-                    // we have a new tab
-                    tempDotDotDotSubTabsContainerHandler.addSubTabWatcher();
-                    subTabsContainerHandlers.add(tempDotDotDotSubTabsContainerHandler);
-                }
-            }
             sharedParameters.allSubTabContainerHandlers.put(toolName, subTabsContainerHandlers);
         }
 
+        // remove old instances first so repeated calls do not stack mouse listeners
+        for (MouseListener mouseListener : toolTabbedPane.getMouseListeners()) {
+            if (mouseListener instanceof MouseAdapterExtensionHandler) {
+                toolTabbedPane.removeMouseListener(mouseListener);
+            }
+        }
         toolTabbedPane.addMouseListener(new MouseAdapterExtensionHandler(mouseEventConsumer, MouseEvent.MOUSE_RELEASED));
 
-        //Defining shortcuts for search in tab titles: ctrl+shift+f , F3, shift+F3
-        if (_isShortcutEnabled) {
-            clearInputMap(toolTabbedPane);
-            subTabsShortcutMappings.forEach((k, v) -> toolTabbedPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(
-                    KeyStroke.getKeyStroke(k), v));
+        // record all selection changes in the navigation history, only one recorder per pane
+        boolean hasHistoryRecorder = false;
+        for (ChangeListener changeListener : toolTabbedPane.getChangeListeners()) {
+            if (changeListener instanceof TabSelectionHistoryRecorder) {
+                hasHistoryRecorder = true;
+                break;
+            }
+        }
+        if (!hasHistoryRecorder) {
+            toolTabbedPane.addChangeListener(new TabSelectionHistoryRecorder(toolName));
+        }
 
-            toolTabbedPane.getActionMap().put("ShowMenu", new AbstractAction() {
-                @Override
-                public void actionPerformed(ActionEvent e) {
-                    SubTabsActions.showPopupMenu(sharedParameters, e);
-                }
-            });
-            toolTabbedPane.getActionMap().put("FindTabs", new AbstractAction() {
-                @Override
-                public void actionPerformed(ActionEvent e) {
-                    SubTabsActions.defineRegExPopupForSearchAndJump(sharedParameters, e);
-                }
-            });
-            toolTabbedPane.getActionMap().put("NextFind", new AbstractAction() {
-                @Override
-                public void actionPerformed(ActionEvent e) {
-                    SubTabsActions.searchInTabTitlesAndJump(sharedParameters, e, true);
-                }
-            });
-            toolTabbedPane.getActionMap().put("PreviousFind", new AbstractAction() {
-                @Override
-                public void actionPerformed(ActionEvent e) {
-                    SubTabsActions.searchInTabTitlesAndJump(sharedParameters, e, false);
-                }
-            });
-            toolTabbedPane.getActionMap().put("FirstTab", new AbstractAction() {
-                @Override
-                public void actionPerformed(ActionEvent e) {
-                    SubTabsActions.jumpToFirstTab(sharedParameters, e);
-                }
-            });
-            toolTabbedPane.getActionMap().put("LastTab", new AbstractAction() {
-                @Override
-                public void actionPerformed(ActionEvent e) {
-                    SubTabsActions.jumpToLastTab(sharedParameters, e);
-                }
-            });
-            toolTabbedPane.getActionMap().put("PreviousTab", new AbstractAction() {
-                @Override
-                public void actionPerformed(ActionEvent e) {
-                    SubTabsActions.jumpToPreviousTab(sharedParameters, e);
-                }
-            });
-            toolTabbedPane.getActionMap().put("NextTab", new AbstractAction() {
-                @Override
-                public void actionPerformed(ActionEvent e) {
-                    SubTabsActions.jumpToNextTab(sharedParameters, e);
-                }
-            });
-            toolTabbedPane.getActionMap().put("PreviouslySelectedTab", new AbstractAction() {
-                @Override
-                public void actionPerformed(ActionEvent e) {
-                    SubTabsActions.jumpToPreviouslySelectedTab(sharedParameters, e);
-                }
-            });
-            toolTabbedPane.getActionMap().put("NextlySelectedTab", new AbstractAction() {
-                @Override
-                public void actionPerformed(ActionEvent e) {
-                    SubTabsActions.jumpToNextlySelectedTab(sharedParameters, e);
-                }
-            });
-            toolTabbedPane.getActionMap().put("CopyTitle", new AbstractAction() {
-                @Override
-                public void actionPerformed(ActionEvent e) {
-                    SubTabsActions.copyTitle(sharedParameters, e);
-                }
-            });
-            toolTabbedPane.getActionMap().put("PasteTitle", new AbstractAction() {
-                @Override
-                public void actionPerformed(ActionEvent e) {
-                    SubTabsActions.pasteTitle(sharedParameters, e);
-                }
-            });
-            toolTabbedPane.getActionMap().put("RenameTitle", new AbstractAction() {
-                @Override
-                public void actionPerformed(ActionEvent e) {
-                    SubTabsActions.renameTitle(sharedParameters, e);
-                }
-            });
+        if (_isShortcutEnabled) {
+            ShortcutMappings.installOnTabbedPane(toolTabbedPane,
+                    ShortcutMappings.getSavedOverrides(sharedParameters), buildShortcutHandlers());
         }
         //tabComponent.removeMouseListener(tabComponent.getMouseListeners()[1]); --> this will remove the current right click menu!
 
@@ -317,12 +273,11 @@ public class SubTabsListenersV2 {
             currentToolTabbedPane.removePropertyChangeListener("indexForTabComponent", pcl);
         }
 
-        /*
         // as there is no other getComponentListeners by default, we can remove them all
-        for (ComponentListener cl : toolTabbedPane.getComponentListeners()) {
-            toolTabbedPane.removeComponentListener(cl);
+        // this prevents the tab-change component listener from accumulating on every reload
+        for (ComponentListener cl : currentToolTabbedPane.getComponentListeners()) {
+            currentToolTabbedPane.removeComponentListener(cl);
         }
-        */
 
         for (MouseListener mouseListener : currentToolTabbedPane.getMouseListeners()) {
             if (mouseListener instanceof MouseAdapterExtensionHandler) {
@@ -335,15 +290,40 @@ public class SubTabsListenersV2 {
             currentToolTabbedPane.removeKeyListener(keyListener);
         }
 
-        // There is no bindings on these items, so it can be cleared
+        // remove the navigation history recorder
+        for (ChangeListener changeListener : currentToolTabbedPane.getChangeListeners()) {
+            if (changeListener instanceof TabSelectionHistoryRecorder) {
+                currentToolTabbedPane.removeChangeListener(changeListener);
+            }
+        }
+
+        // removes all Sharpener key bindings and restores the native ones
         if (_isShortcutEnabled) {
-            clearInputMap(currentToolTabbedPane);
+            ShortcutMappings.uninstallFromComponent(currentToolTabbedPane);
         }
     }
 
-    private void clearInputMap(JComponent jc) {
-        subTabsShortcutMappings.forEach((k, v) -> jc.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(
-                KeyStroke.getKeyStroke(k), "none"));
+    // Maps every shortcut action key to its handler. Used by ShortcutMappings when
+    // the key bindings are installed.
+    private HashMap<String, Consumer<ActionEvent>> buildShortcutHandlers() {
+        HashMap<String, Consumer<ActionEvent>> handlers = new HashMap<>();
+        String prefix = ShortcutMappings.ACTION_KEY_PREFIX;
+        handlers.put(prefix + "ShowMenu", e -> SubTabsActions.showPopupMenu(sharedParameters, e));
+        handlers.put(prefix + "FindTabs", e -> SubTabsActions.defineRegExPopupForSearchAndJump(sharedParameters, e));
+        handlers.put(prefix + "NextFind", e -> SubTabsActions.searchInTabTitlesAndJump(sharedParameters, e, true));
+        handlers.put(prefix + "PreviousFind", e -> SubTabsActions.searchInTabTitlesAndJump(sharedParameters, e, false));
+        handlers.put(prefix + "FirstTab", e -> SubTabsActions.jumpToFirstTab(sharedParameters, e));
+        handlers.put(prefix + "LastTab", e -> SubTabsActions.jumpToLastTab(sharedParameters, e));
+        handlers.put(prefix + "PreviousTab", e -> SubTabsActions.jumpToPreviousTab(sharedParameters, e));
+        handlers.put(prefix + "NextTab", e -> SubTabsActions.jumpToNextTab(sharedParameters, e));
+        handlers.put(prefix + "PreviouslySelectedTab", e -> SubTabsActions.jumpToPreviouslySelectedTab(sharedParameters, e));
+        handlers.put(prefix + "NextlySelectedTab", e -> SubTabsActions.jumpToNextlySelectedTab(sharedParameters, e));
+        handlers.put(prefix + "CopyTitle", e -> SubTabsActions.copyTitle(sharedParameters, e));
+        handlers.put(prefix + "PasteTitle", e -> SubTabsActions.pasteTitle(sharedParameters, e));
+        handlers.put(prefix + "RenameTitle", e -> SubTabsActions.renameTitle(sharedParameters, e));
+        handlers.put(prefix + "FocusRequestEditor", e -> SubTabsActions.focusRequestEditor(sharedParameters, e));
+        handlers.put(prefix + "FocusTab", e -> SubTabsActions.focusTab(sharedParameters, e));
+        return handlers;
     }
 
     private void set_isUpdateInProgress(boolean _isUpdateInProgress) {

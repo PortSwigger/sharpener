@@ -1,9 +1,10 @@
-// Released under AGPL see LICENSE for more information
+// Copyright (C) 2021-2026 Soroush Dalili (@irsdl)
+// Released under AGPL v3.0 with additional terms, see the LICENSE and NOTICE files
 // Developed by Soroush Dalili (@irsdl)
 
 package ninja.burpsuite.libs.objects;
 
-import com.coreyd97.BurpExtenderUtilities.Preferences;
+import ninja.burpsuite.libs.thirdparty.burpextenderutilities.Preferences;
 
 import java.lang.reflect.Type;
 

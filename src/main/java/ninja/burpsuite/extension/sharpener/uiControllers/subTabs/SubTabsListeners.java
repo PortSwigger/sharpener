@@ -1,8 +1,8 @@
 // Burp Suite Extension Name: Sharpener
-// Released under AGPL see LICENSE for more information
+// Copyright (C) 2021-2026 Soroush Dalili (@irsdl)
+// Released under AGPL v3.0 with additional terms, see the LICENSE and NOTICE files
 // Developed by Soroush Dalili (@irsdl)
-// Released initially as open source by MDSec - https://www.mdsec.co.uk
-// Project link: https://github.com/mdsecresearch/BurpSuiteSharpener
+// Project link: https://github.com/irsdl/BurpSuiteSharpenerEx
 
 package ninja.burpsuite.extension.sharpener.uiControllers.subTabs;
 
@@ -26,7 +26,7 @@ import java.util.function.Consumer;
  * Use {@link SubTabsListenersV2} instead.
  */
 @Deprecated
-public class SubTabsListeners implements ContainerListener {
+public final class SubTabsListeners implements ContainerListener {
     private final Consumer<MouseEvent> mouseEventConsumer;
     private final ExtensionSharedParameters sharedParameters;
     private boolean _isUpdateInProgress = false;

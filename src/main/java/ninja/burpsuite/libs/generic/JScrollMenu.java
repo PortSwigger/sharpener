@@ -1,4 +1,5 @@
-// Released under AGPL see LICENSE for more information
+// Copyright (C) 2021-2026 Soroush Dalili (@irsdl)
+// Released under AGPL v3.0 with additional terms, see the LICENSE and NOTICE files
 // Developed by Soroush Dalili (@irsdl)
 
 // from https://stackoverflow.com/questions/9288350/adding-vertical-scroll-to-a-jpopupmenu
@@ -11,7 +12,8 @@ import javax.swing.plaf.PopupMenuUI;
 import java.awt.*;
 
 
-public class JScrollMenu extends JMenu {
+public final class JScrollMenu extends JMenu {
+    private static final long serialVersionUID = 1L;
     // Covers the one in the JMenu because the method that creates it in JMenu is private
     /**
      * The popup menu portion of the menu.

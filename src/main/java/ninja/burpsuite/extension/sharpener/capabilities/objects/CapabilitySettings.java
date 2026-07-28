@@ -1,6 +1,12 @@
+// Burp Suite Extension Name: Sharpener
+// Copyright (C) 2021-2026 Soroush Dalili (@irsdl)
+// Released under AGPL v3.0 with additional terms, see the LICENSE and NOTICE files
+// Developed by Soroush Dalili (@irsdl)
+// Project link: https://github.com/irsdl/BurpSuiteSharpenerEx
+
 package ninja.burpsuite.extension.sharpener.capabilities.objects;
 
-import com.coreyd97.BurpExtenderUtilities.Preferences;
+import ninja.burpsuite.libs.thirdparty.burpextenderutilities.Preferences;
 import ninja.burpsuite.extension.sharpener.ExtensionSharedParameters;
 import ninja.burpsuite.libs.burp.generic.BurpExtensionSharedParameters;
 import ninja.burpsuite.libs.objects.StandardSettings;
@@ -16,7 +22,7 @@ public abstract class CapabilitySettings extends StandardSettings {
 
     private void registerStateSetting() {
         try {
-            sharedParameters.preferences.registerSetting(capability.settingName, boolean.class, capability.enabledByDefault, Preferences.Visibility.GLOBAL);
+            sharedParameters.preferences.register(capability.settingName, boolean.class, capability.enabledByDefault, Preferences.Visibility.GLOBAL);
         } catch (Exception e) {
             //already registered setting
             sharedParameters.printDebugMessage(e.getMessage());

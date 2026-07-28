@@ -1,4 +1,5 @@
-// Released under AGPL see LICENSE for more information
+// Copyright (C) 2021-2026 Soroush Dalili (@irsdl)
+// Released under AGPL v3.0 with additional terms, see the LICENSE and NOTICE files
 // Developed by Soroush Dalili (@irsdl)
 
 // from https://stackoverflow.com/questions/9288350/adding-vertical-scroll-to-a-jpopupmenu
@@ -9,7 +10,8 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseWheelEvent;
 
-public class JScrollPopupMenu extends JPopupMenu {
+public final class JScrollPopupMenu extends JPopupMenu {
+    private static final long serialVersionUID = 1L;
     protected int maximumVisibleRows = 10;
 
     public JScrollPopupMenu() {
@@ -86,6 +88,12 @@ public class JScrollPopupMenu extends JPopupMenu {
 
     @Override
     public void show(Component invoker, int x, int y) {
+        applySizingForVisibleRows();
+        super.show(invoker, x, y);
+        shrinkToFitScreen();
+    }
+
+    private void applySizingForVisibleRows() {
         JScrollBar scrollBar = getScrollBar();
         if (scrollBar.isVisible()) {
             int extent = 0;
@@ -119,8 +127,53 @@ public class JScrollPopupMenu extends JPopupMenu {
 
             setPopupSize(new Dimension(width, height));
         }
+    }
 
-        super.show(invoker, x, y);
+    // After the popup is shown, the component sizes are final (the LAF may scale them
+    // only at that point, for example on high DPI screens). When the popup runs over
+    // the screen edge, the visible rows are reduced and the scrollbar is shown, so no
+    // menu item is ever out of reach. On screens where the menu fits, nothing changes.
+    private void shrinkToFitScreen() {
+        if (!isShowing())
+            return;
+
+        GraphicsConfiguration graphicsConfiguration = getGraphicsConfiguration();
+        if (graphicsConfiguration == null)
+            return;
+
+        Rectangle screenBounds = graphicsConfiguration.getBounds();
+        Insets screenInsets = Toolkit.getDefaultToolkit().getScreenInsets(graphicsConfiguration);
+        int screenBottom = screenBounds.y + screenBounds.height - screenInsets.bottom;
+
+        int overflow = getLocationOnScreen().y + getHeight() - screenBottom;
+        if (overflow <= 0)
+            return;
+
+        Insets insets = getInsets();
+        int availableHeight = getHeight() - overflow - insets.top - insets.bottom;
+        int fittingRows = countRowsThatFit(getComponents(), availableHeight);
+
+        maximumVisibleRows = Math.max(3, fittingRows);
+        getScrollBar().setVisible(true);
+        // setPopupSize inside this call resizes the popup while it is showing
+        applySizingForVisibleRows();
+        revalidate();
+        repaint();
+    }
+
+    // package-private so it can be unit tested without showing a popup
+    static int countRowsThatFit(Component[] components, int availableHeight) {
+        int rows = 0;
+        int usedHeight = 0;
+        for (Component comp : components) {
+            if (comp instanceof JScrollBar)
+                continue;
+            usedHeight += comp.getPreferredSize().height;
+            if (usedHeight > availableHeight)
+                break;
+            rows++;
+        }
+        return rows;
     }
 
     protected static class ScrollPopupMenuLayout implements LayoutManager {
