@@ -1,0 +1,15 @@
+{
+  "purpose": "Reviewed local Windows validation JDK; the matching Linux CI input is pinned separately in ci-jdk.json",
+  "vendor": "Amazon Corretto",
+  "version": "21.0.13.1.2",
+  "java_runtime": "21.0.13.1+2-LTS",
+  "platform": "windows-x64",
+  "filename": "amazon-corretto-21.0.13.1.2-windows-x64-jdk.zip",
+  "source": "https://corretto.aws/downloads/resources/21.0.13.1.2/amazon-corretto-21.0.13.1.2-windows-x64-jdk.zip",
+  "sha256": "e91d8d38fe7af1e13ddde5c65d6c0cdd62d68fe091e9003464f5b45c422fb683",
+  "signature_source": "https://corretto.aws/downloads/resources/21.0.13.1.2/amazon-corretto-21.0.13.1.2-windows-x64-jdk.zip.sig",
+  "signature_key_source": "https://yum.corretto.aws/corretto.key",
+  "signature_fingerprint": "6DC3636DAE534049C8B94623A122542AB04F24E3",
+  "publication_utc": "2026-11-18T00:46:29Z",
+  "age_exception": "docs/toolchain-security-update-2026-11-18.json"
+}

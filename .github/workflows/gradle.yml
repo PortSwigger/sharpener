@@ -1,107 +1,106 @@
-# This workflow will build a Java project with Gradle
-# For more information see: https://help.github.com/actions/language-and-framework-guides/building-and-testing-java-with-gradle
-
-name: Java CI with Gradle
+name: Java CI and PortSwigger review
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
+  workflow_call:
+    outputs:
+      jar_sha256:
+        description: SHA-256 of the tested Windows jar
+        value: ${{ jobs.windows-build.outputs.jar_sha256 }}
+
+# Normal CI is read-only. The separate manual release workflow accepts only
+# the recorded maintainer approval and never publishes untrusted PR code.
+permissions:
+  contents: read
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3 (2026-06-02)
-      - name: Set up JDK 21
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0 (2026-01-22)
-        with:
-          distribution: 'oracle'
-          java-version: '21'
-          cache: 'gradle'
+      - name: Check out the exact tested public commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_SERVER_URL" == 'https://github.com' ]]
+          [[ "$GITHUB_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git init --quiet .
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git"
+          git -c credential.helper= -c protocol.version=2 fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          if configured_hooks=$(git config --get core.hooksPath); then
+            test "$configured_hooks" = '.githooks'
+          fi
+          git config --local core.hooksPath .githooks
+      - name: Test pinned JDK acquisition guards
+        run: python3 -I -m unittest discover -s .github/scripts -p 'test_*.py'
+      - name: Acquire the exact reviewed security JDK
+        run: python3 -I .github/scripts/acquire_ci_jdk.py --destination "$RUNNER_TEMP/sharpener-reviewed-jdk"
+      - name: Record runner identity
+        run: |
+          printf 'Runner image: %s %s\n' "$ImageOS" "$ImageVersion"
+          git --version
+          python3 --version
+          java -version
+          cat "$JAVA_HOME/release"
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
-      - name: Build with Gradle
-        run: ./gradlew build
-      - name: Creating the jar file
-        run: ./gradlew jar
-      - name: Upload artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1 (2026-04-10)
-        with:
-          path: ./releases/*.jar
-          name: Downloadable Extension File
-      # The release steps below must only run for pushes to main.
-      # On pull_request events the ref is not a branch, so they would wrongly
-      # use the early_adopter_ prefix and replace a release from a PR build.
-      - name: Get previous tag for the branch
-        if: github.event_name == 'push'
-        id: get_previous_tag
-        run: |
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            PREFIX="main_"
-          else
-            PREFIX="early_adopter_"
-          fi
-          PREVIOUS_TAG=$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                             https://api.github.com/repos/${{ github.repository }}/git/refs/tags \
-                             | jq -r ".[] | select(.ref | startswith(\"refs/tags/${PREFIX}\")) | .ref" \
-                             | sort -V | tail -n 1 | sed "s|refs/tags/||")
-          
-          # Check if we found a tag
-          if [[ -z "$PREVIOUS_TAG" ]]; then
-              echo "No previous tag found for prefix ${PREFIX}."
-              echo "PREVIOUS_TAG=" >> $GITHUB_ENV
-          else
-              echo "PREVIOUS_TAG=$PREVIOUS_TAG" >> $GITHUB_ENV
-          fi
-      - name: Delete the previous tag
-        if: github.event_name == 'push' && env.PREVIOUS_TAG != ''
-        run: |
-          gh release delete ${{ env.PREVIOUS_TAG }} -y
-          git push origin --delete ${{ env.PREVIOUS_TAG }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Extract new version
-        if: github.event_name == 'push'
-        id: get_version
-        run: |
-          VERSION=$(grep "^version=" src/main/resources/extension.properties | awk -F'=' '{print $2}')
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-      - name: Set release tag based on branch
-        if: github.event_name == 'push'
-        id: vars
-        run: |
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "RELEASE_TAG=main_${VERSION}" >> $GITHUB_ENV
-          else
-            echo "RELEASE_TAG=early_adopter_${VERSION}" >> $GITHUB_ENV
-          fi
-      - name: Build release notes from CHANGES.md
-        if: github.event_name == 'push'
-        run: |
-          # Copy the section of the released version from CHANGES.md.
-          # The heading format must be: ## Version X.Y (YYYY-MM-DD)
-          awk -v ver="$VERSION" '
-            index($0, "## Version " ver " ") == 1 {found=1; next}
-            found && /^## / {exit}
-            found {print}
-          ' CHANGES.md > release_notes.md
+      - name: Acquire and verify approved Gradle security composition
+        run: ./gradlew --sharpener-acquire-toolchain
+      - name: Acquire locked verified dependencies
+        run: ./gradlew resolveDependencies --dependency-verification strict --console=plain
+      - name: Build and check PortSwigger push review offline
+        run: ./gradlew verifyPushReadiness --offline --dependency-verification strict --console=plain
 
-          if [[ ! -s release_notes.md ]]; then
-            echo "This jar file has been built by GitHub automatically." > release_notes.md
-          fi
-          echo "" >> release_notes.md
-          echo "Full change history: https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGES.md" >> release_notes.md
-      - name: Create Release using GitHub CLI
-        if: github.event_name == 'push'
+  windows-build:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    outputs:
+      jar_sha256: ${{ steps.jar.outputs.sha256 }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out the exact tested public commit
         run: |
-          gh release create ${{ env.RELEASE_TAG }} ./releases/*.jar \
-            --title "Release ${{ env.RELEASE_TAG }}" \
-            --notes-file release_notes.md \
-            --repo ${{ github.repository }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ($env:GITHUB_SERVER_URL -ne 'https://github.com' -or $env:GITHUB_REPOSITORY -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' -or $env:GITHUB_SHA -notmatch '^[0-9a-f]{40}$') { throw 'Invalid checkout identity' }
+          git init --quiet .
+          git config core.autocrlf false
+          git remote add origin "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY.git"
+          git -c credential.helper= fetch --no-tags --depth=1 origin $env:GITHUB_SHA
+          git checkout --detach FETCH_HEAD
+          if ((git rev-parse HEAD) -ne $env:GITHUB_SHA) { throw 'Wrong checked-out commit' }
+          git config --local core.hooksPath .githooks
+      - name: Test JDK and publication guards
+        run: python -I -m unittest discover -s .github/scripts -p 'test_*.py'
+      - name: Acquire exact reviewed Windows JDK
+        run: python -I .github/scripts/acquire_ci_jdk.py --destination "$env:RUNNER_TEMP/sharpener-reviewed-jdk"
+      - name: Record runner identity
+        run: |
+          Write-Output "Runner image: $env:ImageOS $env:ImageVersion"
+          git --version
+          python --version
+          gh --version
+          java -version
+      - name: Acquire approved toolchain
+        run: .\gradlew.bat --sharpener-acquire-toolchain
+      - name: Acquire locked verified dependencies
+        run: .\gradlew.bat resolveDependencies --dependency-verification strict --console=plain
+      - name: Build and check review offline
+        run: .\gradlew.bat verifyPushReadiness --offline --dependency-verification strict --console=plain
+      - name: Check release readiness for explicit release dispatch
+        if: github.event_name == 'workflow_dispatch'
+        run: .\gradlew.bat verifyReleaseReadiness --offline --dependency-verification strict --console=plain
+      - name: Record tested jar hash
+        id: jar
+        run: |
+          $sha = (Get-FileHash releases/BurpSuiteSharpenerEx.jar -Algorithm SHA256).Hash.ToLowerInvariant()
+          "sha256=$sha" >> $env:GITHUB_OUTPUT
+          Write-Output "Tested Windows jar SHA-256: $sha"

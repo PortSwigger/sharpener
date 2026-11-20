@@ -1,0 +1,8 @@
+# Git executes this hook with /bin/sh, including in Git for Windows.
+.githooks/* text eol=lf
+gradlew text eol=lf
+# Preserve upstream licence and notice bytes across Windows/Unix checkouts.
+licenses/third-party/** -text
+# Preserve benchmark evidence bytes and hashes across Windows/Unix checkouts.
+docs/*benchmark.csv -text
+.github/scripts/*.py text eol=lf

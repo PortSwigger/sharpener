@@ -16,7 +16,7 @@ Refer to the "Burp Suite Compatibility and Reporting Errors" section for detaile
 
 ## Installation
 
-* Download the latest jar file built by GitHub from [/releases/latest](https://github.com/irsdl/BurpSuiteSharpenerEx/releases/latest), or by going through the [Workflows' Artifacts](https://github.com/irsdl/BurpSuiteSharpenerEx/actions).
+* Download the latest published jar from [/releases/latest](https://github.com/irsdl/BurpSuiteSharpenerEx/releases/latest).
 * Add it to Burp Suite using the `Extensions` tab
 
 ## Features
@@ -43,18 +43,66 @@ Refer to the "Burp Suite Compatibility and Reporting Errors" section for detaile
 * Ability to detect off-screen Burp Suite window to bring it to the centre
 * Ability to highlight HTTP and WebSocket requests in proxy by detecting the "tempcolorCOLORNAME" pattern and removing it
 * Ability to highlight HTTP and WebSocket requests and responses in proxy by detecting the "permcolorCOLORNAME" pattern
+* Logger HTTP highlighting using the same markers, including traffic sent by other Burp tools
+
+## Manual highlighting inspection
+
+Logger highlighting has a **64 KiB limit enabled by default**. A single valid
+Content-Length and the header-section size are used only as an initial hint. If
+the declared complete request could fit, Sharpener obtains the **original
+request's bytes** and checks their actual length. Complete requests at or below
+65,536 bytes are inspected, including their bodies. The declaration never
+controls how many actual bytes are scanned.
+
+Declared or actually oversized requests use a header-only inspection view,
+including the URL. Missing/invalid/duplicate Content-Length or Transfer-Encoding
+also uses this fallback. Bodies of oversized requests are skipped completely,
+including markers near their start. The header view and raw response prefixes
+are inspected up to 65,536 bytes; a complete marker must fit in that range.
+
+An understated Content-Length can still make Burp copy a large request before
+the actual-size check rejects body inspection. The public API exposes no
+documented copy-free actual-length accessor or bounded request reader; see
+[the API improvement proposal](docs/montoya-message-size-api.md). The original
+request is never replaced or truncated by the header-only inspection view.
+
+For complete inspection, turn off **Sharpener > Global Settings > Supported
+Capabilities > Manual Highlighter (Proxy and Logger) > Limit Logger inspection
+to 64 KiB**. Its **Enabled** checkbox controls the feature; the limit is an option
+inside that same submenu. The
+optional Settings page has the same option under Traffic highlighting. The
+global choice persists while the capability is disabled and takes effect on
+subsequent messages without reloading. Reset-all restores the default limit.
+Full inspection still costs time proportional to the message size.
+
+Requests prefer the first valid `tempcolorCOLORNAME` in the inspected range,
+otherwise the first `permcolorCOLORNAME`; responses use only permanent markers.
+Non-Proxy HTTP traffic is annotated without changing its bytes. The scanner
+does not filter by content type, decode or decompress bodies.
+
+Proxy still searches complete messages and removes **all** recognized temporary
+request markers, including those beyond 65,536 bytes. Its existing bounded
+temporary-color cache supplies Logger annotations before scanning, subject to
+its existing eviction limits. A late permanent marker can therefore color Proxy
+history while its separate Logger entry stays unchanged; disabling the limit
+restores complete Logger detection. Proxy rewriting and text WebSocket work can
+still be expensive. See the [implementation and measurements](docs/manual-highlighter-performance.md).
 
 ## Burp Suite Compatibility and Reporting Errors
 
-This extension targets the most recent Burp Suite release. It was last tested with the pro version 2026.4.3, the most recent stable release at the time of this documentation. It is also compatible with the community edition. The minimum supported version is Burp Suite 2024.2, as that is the first release that requires Java 21.
+Sharpener targets current Burp Stable and Early Adopter, including Community Edition, with priority on roughly the preceding year and Windows automation. The 4.94 development jar passed 27 automated UI groups and 444 benchmark comparisons on Windows Professional 2026.11.2. Historical Community 2026.3.3 evidence applies only to its earlier jar; its expanded rerun timed out at startup. Full UI/clipboard/manual, current Community and other-OS validation are deferred for 4.94 by the maintainer, not recorded as passed. See the [source-bound observations and limitations](docs/manual-highlighter-size-guard-validation.json) and [4.94 release approval](docs/release-4.94-approval.json).
 
-All changes are released from the `main` branch. See [CHANGES.md](CHANGES.md) for the change history of each release.
+Known issue: the installed Windows main/taskbar icon may remain unchanged even when unpinned. Detached-window icon handling is separate; this issue is deferred for 4.94.
+
+Java 21 is required (Burp 2024.2 or later). This bytecode baseline does not establish API compatibility with every older Burp release. See the [host validation checklist](docs/burp-ui-compatibility.md) and [current compliance findings](docs/portswigger-compliance.md).
+
+Releases are prepared from `main`; see [CHANGES.md](CHANGES.md). Older Burp installations can use a suitable historical jar from GitHub Releases.
 
 We actively use this extension and occasionally observe potential errors, particularly when Burp Suite updates its core functionalities or UI. As an open-source project, we heavily rely on community feedback for enhancements and bug fixes. If you encounter any issues, kindly report them on our [issues page](https://github.com/irsdl/BurpSuiteSharpenerEx/issues). Additionally, if you value our work, please consider [sponsoring](https://github.com/sponsors/irsdl) this project.
 
 ## Using the Legacy Extension
 
-In the latest version of this extension, only the most recent version of Burp Suite is supported, as noted above. For older versions of Burp Suite, you can use the legacy version of the extension or refer to the original repository.
+For Burp versions outside the targets described above, the legacy extension and original repository remain available. Compatibility with every earlier 2026 release has not been established.
 The older versions of this extension can be downloaded from the legacy branch (with no support):
 
 * [Legacy-Extension branch releases](https://github.com/mdsecresearch/BurpSuiteSharpener/tree/Legacy-Extension/release)
@@ -73,9 +121,31 @@ Please feel free to submit your new feature requests using `FR: ` in its title i
 It would be great to also list any known available extensions which might have implemented suggested features.
 Perhaps the best features can be imported from different open-source extensions so the overhead of adding different extensions can be reduced.
 
+## Settings
+
+The **Sharpener** top menu remains available on every supported host, with all
+existing settings, Keyboard Shortcuts, help links and maintenance commands.
+
+Supporting hosts also offer **Settings > Extensions > Sharpener** as an optional
+configuration page. Its Global and Project tabs use compact selectors, aligned
+fields and sections for appearance, window behavior, highlighting, diagnostics
+and shortcuts. Changes apply immediately through the same preferences as the
+menu. Help and maintenance commands stay in the top menu.
+
+Older hosts use the complete menu without needing the optional Settings API.
+Repeater/Intruder context menus also retain Keyboard Shortcuts and offer
+**Sharpener Settings...** when host navigation is available. See the
+[settings inventory and compatibility notes](docs/native-settings-panel.md).
+
+![Optional native Sharpener Settings form](images/sharpener-settings.png)
+
+The Global form above was captured in an isolated Professional host. A
+[Project tab layout preview](images/sharpener-project-settings-preview.png) shows
+the same form with synthetic values in the dark theme.
+
 ## Keyboard Shortcuts
 
-All Sharpener shortcuts can be viewed and changed inside Burp: use the `Sharpener` top menu > `Keyboard Shortcuts`, or the `Keyboard Shortcuts` item at the bottom of a Repeater/Intruder tab right-click menu. Changes are validated (Burp's own default hotkeys such as Ctrl+R cannot be taken) and applied right away.
+All Sharpener shortcuts can be viewed and changed inside Burp: use the `Sharpener` top menu > `Keyboard Shortcuts`, the optional Settings page, or the `Keyboard Shortcuts` item at the bottom of a Repeater/Intruder tab right-click menu. Changes are validated (Burp's own default hotkeys such as Ctrl+R cannot be taken) and applied right away.
 
 Each configurable action has ONE shortcut. In the dialog you set it by clicking the cell and pressing the key combination (no typing). A shortcut works anywhere in Burp, even while typing in the editor, so it needs Ctrl, Alt, or a function key. If you press a key that is already used, the dialog offers to move it.
 
@@ -140,6 +210,9 @@ Fixed mouse actions on the Repeater and Intruder tabs (not configurable):
 * Check the [extension's GitHub repository](https://github.com/irsdl/BurpSuiteSharpenerEx) rather than BApp Store for the latest updates
 * Sample icons are available in the [burpicon-sample/](burpicon-sample/) and [hacker-sample-icons/](hacker-sample-icons/) directories
 
+The screenshots below show the existing tab features and Sharpener menu. The
+optional Settings form is described above.
+
 ![Sharpener screenshot 1](images/img.png)
 
 ![Sharpener screenshot 2](images/img_0.png)
@@ -164,14 +237,21 @@ Fixed mouse actions on the Repeater and Intruder tabs (not configurable):
 
 ## Contributing
 
-Pull requests are welcome. A few rules keep the automated release pipeline working:
+Pull requests are welcome. Pushes and releases have separate validation gates:
 
-* All changes go through pull requests into the `main` branch (direct pushes are blocked).
-* Build with `./gradlew jar` (requires JDK 21). The test suite must pass: `./gradlew build` runs it headless.
+* AI-assisted maintenance follows [AGENTS.md](AGENTS.md), including the dependency, toolchain, and GitHub Actions admission policy.
+* Before every push, review the live PortSwigger guidance and update the [compliance evidence](docs/portswigger-review.json), then run `./gradlew verifyPushReadiness --offline --dependency-verification strict`. Enable the versioned pre-push hook in each clone with `git config --local core.hooksPath .githooks`; preserve existing custom hooks. See the [full procedure](docs/portswigger-compliance.md).
+* Review the dated [dependency evidence](docs/dependency-review.md) before updating locks or verification hashes. First prepare the exact toolchain online with `./gradlew --sharpener-acquire-toolchain`, then acquire locked project inputs with `./gradlew resolveDependencies --dependency-verification strict` and build with `./gradlew build --offline --dependency-verification strict`. On Windows use `.\gradlew.bat`.
+* The wrapper uses a [maintainer-approved local Gradle 9.9.1/Guava 33.8.0-jre composition](docs/gradle-security-patch.md), with pinned canonical input hashes and complete installation checks. It is not an official Gradle distribution. Its cache is project-local, normal builds never download toolchain inputs, and single-use daemons prevent reuse of stock Gradle's vulnerable Guava.
+* Submit changes through pull requests into `main`; maintainers must configure the required GitHub checks.
+* Build with `./gradlew build` (requires JDK 21); this runs the tests headless and verifies packaging. `jar` alone is insufficient validation.
+* Full live UI regressions are opt-in: use `./gradlew fullUiTestPlan` to list cases and follow [the full UI suite guide](docs/full-ui-tests.md) to run `fullUiTest` after major changes. These heavy tests are excluded from normal builds, quick tests and the production jar.
 * New or changed behaviour must be covered by test cases in `src/test/java`. The extension cannot run outside Burp Suite, so tests use mocked Montoya interfaces and plain Swing components.
-* Releases are created automatically when a pull request that bumps the version is merged. To make a release:
+* Compatibility work targets both Burp Stable and Early Adopter. See the [compatibility design and host validation checklist](docs/burp-ui-compatibility.md); simulated layouts do not replace loading the jar in both release channels.
+* Keep Windows, macOS and Linux supported. Native changes need guarded portable paths and live evidence for each OS/channel before release; see [platform icons and dynamic host testing](docs/platform-icons-and-testing.md). Windows icon changes apply to running windows, preserving existing launcher files and pinned shortcuts.
+* Normal CI is read-only and validates Linux and Windows builds. Publication uses the separate manual release workflow on `main`, with a version-specific maintainer approval, release gate and exact tested Windows jar hash. The [4.93 exception](docs/release-4.93-approval.json) applies only to 4.93; [4.94 has a separate record](docs/release-4.94-approval.json). Deferred checks remain visible and are not BApp certification. Existing releases/assets are preserved. For a release:
   * Bump `version` in `src/main/resources/extension.properties`. It must stay parseable as a number (for example `4.7`), because the update checker compares it numerically.
-  * Add a matching section at the top of [CHANGES.md](CHANGES.md) with the exact heading format `## Version X.Y (YYYY-MM-DD)`. CI copies that section into the GitHub release notes.
+  * Add a brief section at the top of [CHANGES.md](CHANGES.md) using `## Version X.Y (YYYY-MM-DD)`, with known limitations. Obtain version-specific maintainer approval, review upstream guidance, pass the release gate and dispatch the manual release workflow; never publish automatically on ordinary pushes.
 
 ## Thanks To
 

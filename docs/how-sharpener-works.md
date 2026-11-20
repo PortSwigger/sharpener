@@ -244,9 +244,24 @@ Self-registering plug-in model in `capabilities/implementations/`:
 Shipped capabilities (both enabled by default, toggled from the top menu):
 
 - **PwnFox Highlighter** (`pwnFoxSupportCapability`, order 50000, PROXY_REQUEST_HANDLER). Reads the `X-PwnFox-Color` header from proxied requests (sent by the PwnFox Firefox extension) and sets the Burp highlight color. The header is kept readable during `handleRequestReceived` so other extensions can also read it, then removed in `handleRequestToBeSent` before the request leaves Burp, unless GLOBAL `pwnFoxRemoveColorHeader` (default true) is off.
-- **Proxy Manual Highlighter** (`manualHighlightCapability`, order 10000, PROXY request + response + websocket handlers). The user types markers anywhere in a request: `tempcolorCOLORNAME` highlights the request and the marker is stripped before sending (body length recalculated); `permcolorCOLORNAME` stays in the request and highlights both the request and any response containing it. Supported color names: Red, Orange, Yellow, Green, Cyan, Blue, Pink, Magenta, Gray (case-insensitive). Also works for websocket text messages (temp only client to server).
+- **Manual Highlighter (Proxy and Logger)** (`manualHighlightCapability`, order 10000, shared Proxy request/response/WebSocket and HTTP handlers). In Proxy, `tempcolorCOLORNAME` highlights a request and all recognised temporary markers are stripped before forwarding; body length is recalculated. `permcolorCOLORNAME` is retained and colours requests or responses containing it. A temporary request marker takes precedence over a permanent request marker; a permanent response marker can set the final response colour. Names Red, Orange, Yellow, Green, Cyan, Blue, Pink, Magenta and Gray are matched without case or locale dependence. WebSocket temporary removal applies only client-to-server. Logger colouring uses Montoya HTTP annotations. Other tools' HTTP requests are annotated without rewriting their markers. Proxy and Logger have separate annotations, so at most 1024 message-ID/colour pairs bridge stripped temporary markers; pairs are consumed once and evicted oldest-first, with no retained request contents. The saved capability setting keeps its original name.
 
 ## 12. UI owned by the extension (uiSelf)
+
+The unreleased manual highlighter adds global
+`manualHighlightLimitLoggerInspection` (default true). General HTTP callbacks
+scan up to 65,536 bytes by default with a bounded-chunk byte scanner. Requests
+use a valid single Content-Length plus `bodyOffset()` only as an initial size
+hint, rejecting Transfer-Encoding or ambiguous lengths. An admitted request is
+read from its original bytes and scanned completely only when its actual total
+length is at most 65,536. Larger or unknown-size requests use an immutable
+`withBody("")` header-only view. Understated lengths can still incur a complete
+copy before rejection; the [API proposal](montoya-message-size-api.md) describes
+copy-free size metadata and bounded reads. Responses scan their raw
+prefix. Disabling the option restores complete inspection. The full menu and
+optional native form expose the same saved setting. Cached temporary Proxy
+colors bypass scanning. Proxy transformations and text WebSocket paths retain
+their existing full-message behavior. See [behavior and host measurements](manual-highlighter-performance.md).
 
 - **Top menu** (`TopMenu`, the main user entry point, registered in Burp's menu bar; rebuilt on demand by `updateTopMenuBar()` on the EDT). Structure:
   - **Global Settings**: Tools' Template And Style (Enable All / Disable All, Icons' Theme radio group including a custom directory, Icons' Size radio group, per-tool `isUnique_<tool>` checkboxes; Extender/UserOptions/ProjectOptions are skipped, gone in Burp 2024.2+), Scrollable Tool Pane, Use Last Screen Position And Size, Detect Off Screen Window Position, **Supported Capabilities** (one checkbox per capability; PwnFox gets an extra "Remove the color header" item), and **Debug Settings** (radio group over the debug levels).
